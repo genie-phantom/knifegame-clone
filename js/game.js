@@ -62,6 +62,10 @@ export class KnifeGame {
     this.shopMessage = '';
     this.shopMessageT = 0;
     this.exitConfirm = false;   // quit-to-title dialog is up; the run is frozen
+    // overlay: null | 'pause' | 'settings' | 'resetConfirm'
+    this.overlay = null;
+    this.overlayFrom = null;    // where settings was opened from, to return there
+    this.haptic = save.haptic;
 
     this.log = null;
     this.flying = [];     // knives in flight or bouncing away
@@ -142,20 +146,127 @@ export class KnifeGame {
     // dead game-over panel keeps fading over the title screen after quitting
     this.overlayAlpha = 0;
     this.exitConfirm = false;
+    this.overlay = null;
     this.hasKnifeReady = false;
     this._titleLog();
   }
 
-  // ---------------- quit to title ----------------
+  // ---------------- pause / settings / quit ----------------
   // Hit rects live here so drawing, tap routing and tests all agree.
-  getExitRect() { return { x: DESIGN_W - 58, y: 16, w: 42, h: 42 }; }
+  getPauseRect() { return { x: DESIGN_W - 70, y: 14, w: 54, h: 54 }; }
+  // kept for compatibility with the earlier exit flow and its QA
+  getExitRect() { return this.getPauseRect(); }
+
+  getResumeRect() { return { x: 66, y: 366, w: DESIGN_W - 132, h: 58 }; }
+  getPauseSettingsRect() { return { x: 66, y: 436, w: DESIGN_W - 132, h: 58 }; }
+  getQuitRect() { return { x: 66, y: 506, w: DESIGN_W - 132, h: 58 }; }
+
   getExitConfirmRect() { return { x: DESIGN_W / 2 - 118, y: 452, w: 108, h: 50 }; }
   getExitCancelRect() { return { x: DESIGN_W / 2 + 10, y: 452, w: 108, h: 50 }; }
+
+  getSettingsRect() { return { x: DESIGN_W - 70, y: 14, w: 54, h: 54 }; }
+  getSoundToggleRect() { return { x: DESIGN_W - 118, y: 236, w: 76, h: 40 }; }
+  getHapticToggleRect() { return { x: DESIGN_W - 118, y: 300, w: 76, h: 40 }; }
+  getResetRect() { return { x: 56, y: 380, w: DESIGN_W - 112, h: 52 }; }
+  getResetConfirmRect() { return { x: DESIGN_W / 2 - 118, y: 452, w: 108, h: 50 }; }
+  getResetCancelRect() { return { x: DESIGN_W / 2 + 10, y: 452, w: 108, h: 50 }; }
+  getSettingsCloseRect() { return { x: 110, y: DESIGN_H - 92, w: DESIGN_W - 220, h: 56 }; }
+
+  get paused() { return this.overlay !== null && this.status === 'playing'; }
+
+  pause() {
+    if (this.status !== 'playing' || this.overlay) return false;
+    this.overlay = 'pause';
+    this.sfx('click');
+    return true;
+  }
+
+  resume() {
+    if (this.overlay !== 'pause') return false;
+    this.overlay = null;
+    this.sfx('click');
+    return true;
+  }
+
+  openSettings() {
+    if (this.overlay === 'settings') return false;
+    this.overlayFrom = this.overlay === 'pause' ? 'pause' : 'title';
+    this.overlay = 'settings';
+    this.sfx('click');
+    return true;
+  }
+
+  // Returns to whichever screen settings was opened from.
+  closeSettings() {
+    if (this.overlay !== 'settings' && this.overlay !== 'resetConfirm') return false;
+    this.overlay = this.overlayFrom === 'pause' ? 'pause' : null;
+    this.sfx('click');
+    return true;
+  }
+
+  getSettings() {
+    return { soundOn: !this.muted, hapticOn: this.haptic };
+  }
+
+  toggleSound() {
+    this.muted = !this.muted;
+    save.setMuted(this.muted);
+    if (!this.muted) this.sfx('click');
+    return !this.muted;
+  }
+
+  toggleHaptic() {
+    this.haptic = !this.haptic;
+    save.setHaptic(this.haptic);
+    this.buzz(12);
+    this.sfx('click');
+    return this.haptic;
+  }
+
+  buzz(ms) {
+    if (!this.haptic) return;
+    try { navigator.vibrate && navigator.vibrate(ms); } catch { /* unsupported */ }
+  }
+
+  askReset() {
+    if (this.overlay !== 'settings') return false;
+    this.overlay = 'resetConfirm';
+    return true;
+  }
+
+  cancelReset() {
+    if (this.overlay !== 'resetConfirm') return false;
+    this.overlay = 'settings';
+    return true;
+  }
+
+  confirmReset() {
+    if (this.overlay !== 'resetConfirm') return false;
+    save.reset();
+    this.coins = save.coins;
+    this.best = save.best;
+    this.fruitCollected = save.fruitCollected;
+    this.muted = save.muted;
+    this.haptic = save.haptic;
+    this.overlay = 'settings';
+    this.shopMessage = '기록을 초기화했어요';
+    this.shopMessageT = 1.8;
+    this.sfx('bang');
+    return true;
+  }
   getReplayRect() { return { x: DESIGN_W / 2 + 8, y: 600, w: 142, h: 60 }; }
   getHomeRect() { return { x: DESIGN_W / 2 - 150, y: 600, w: 142, h: 60 }; }
 
   askExit() {
     if (this.status !== 'playing' || this.exitConfirm) return false;
+    this.exitConfirm = true;
+    this.sfx('click');
+    return true;
+  }
+
+  // From the pause menu: confirm before abandoning the run.
+  askQuit() {
+    if (this.overlay !== 'pause') return false;
     this.exitConfirm = true;
     this.sfx('click');
     return true;
@@ -172,7 +283,9 @@ export class KnifeGame {
   // discards a personal best.
   quitToTitle() {
     save.recordBest(this.score);
+    this.best = save.best;
     this.exitConfirm = false;
+    this.overlay = null;
     this.restart();
     this.sfx('click');
     return true;
@@ -633,9 +746,9 @@ export class KnifeGame {
       for (const f of this.log.fruits) if (f.pop > 0) f.pop = Math.max(0, f.pop - dt);
     }
 
-    // While the quit dialog is up the run is frozen: the log stops turning and
-    // knives stop moving, so opening it can never cost the player a throw.
-    if (this.exitConfirm) return;
+    // While any overlay is up the run is frozen: the log stops turning and
+    // knives stop moving, so pausing can never cost the player a throw.
+    if (this.exitConfirm || this.overlay) return;
 
     if (this.log) {
       const L = this.log;
@@ -718,10 +831,14 @@ export class KnifeGame {
     ctx.translate(this.offX, this.offY);
     ctx.scale(this.scale, this.scale);
     if (this.status === 'playing' || this.status === 'gameover') this._drawHud(ctx);
-    if (this.status === 'playing') this._drawExitButton(ctx);
+    if (this.status === 'playing' && !this.overlay && !this.exitConfirm) this._drawPauseButton(ctx);
+    if (this.status === 'title' && !this.overlay) this._drawGearButton(ctx);
     if (this.status === 'title') this._drawTitle(ctx);
     if (this.status === 'shop') this._drawShop(ctx);
     if (this.status === 'quests') this._drawQuests(ctx);
+    if (this.overlay === 'pause' && !this.exitConfirm) this._drawPauseMenu(ctx);
+    if (this.overlay === 'settings') this._drawSettings(ctx);
+    if (this.overlay === 'resetConfirm') this._drawResetConfirm(ctx);
     if (this.exitConfirm) this._drawExitConfirm(ctx);
     if (this.overlayAlpha > 0.01) this._drawGameOver(ctx);
     ctx.restore();
@@ -967,26 +1084,178 @@ export class KnifeGame {
     ctx.restore();
   }
 
-  // Quit button: a small X badge in the top-right of the play HUD.
-  _drawExitButton(ctx) {
-    const r = this.getExitRect();
+  // Pause control: a solid, labelled button so it reads as an actual control
+  // rather than a faint decoration.
+  _drawPauseButton(ctx) {
+    const r = this.getPauseRect();
     ctx.save();
     ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
     ctx.beginPath();
     ctx.arc(0, 0, r.w / 2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(30,24,18,0.55)';
+    ctx.fillStyle = 'rgba(52,42,32,0.92)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(243,228,200,0.35)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#f3e4c8';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // pause bars
+    ctx.fillStyle = '#f3e4c8';
+    this._roundRect(ctx, -8, -10, 6, 20, 2); ctx.fill();
+    this._roundRect(ctx, 2, -10, 6, 20, 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // Gear button used on the title screen.
+  _drawGearButton(ctx) {
+    const r = this.getSettingsRect();
+    ctx.save();
+    ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
+    ctx.beginPath();
+    ctx.arc(0, 0, r.w / 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(52,42,32,0.92)';
+    ctx.fill();
+    ctx.strokeStyle = '#f3e4c8';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
     ctx.strokeStyle = '#f3e4c8';
-    ctx.lineWidth = 3.2;
-    ctx.lineCap = 'round';
-    const k = 8;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(-k, -k); ctx.lineTo(k, k);
-    ctx.moveTo(k, -k); ctx.lineTo(-k, k);
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
     ctx.stroke();
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 10, Math.sin(a) * 10);
+      ctx.lineTo(Math.cos(a) * 14, Math.sin(a) * 14);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _menuButton(ctx, r, label, fill, edge, text) {
+    ctx.fillStyle = fill;
+    this._roundRect(ctx, r.x, r.y, r.w, r.h, 12);
+    ctx.fill();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 4;
+    this._roundRect(ctx, r.x, r.y, r.w, r.h, 12);
+    ctx.stroke();
+    ctx.fillStyle = text;
+    ctx.font = '700 23px "Jua", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2 + 1);
+  }
+
+  _drawPauseMenu(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(18,13,9,0.88)';
+    ctx.fillRect(0, 0, DESIGN_W, DESIGN_H);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fbeed6';
+    ctx.font = '700 34px "Jua", system-ui, sans-serif';
+    ctx.fillText('일시정지', DESIGN_W / 2, 286);
+    ctx.font = '700 16px "Jua", system-ui, sans-serif';
+    ctx.fillStyle = '#c8bda8';
+    ctx.fillText(`점수 ${this.score}    스테이지 ${this.stage + 1}`, DESIGN_W / 2, 322);
+
+    this._menuButton(ctx, this.getResumeRect(), '계속하기', '#f5c132', '#c9942a', '#4a2d13');
+    this._menuButton(ctx, this.getPauseSettingsRect(), '설정', '#7fb2d8', '#4d7fa5', '#17303f');
+    this._menuButton(ctx, this.getQuitRect(), '메인으로', '#cbbfa8', '#9d9179', '#3f3423');
+    ctx.restore();
+  }
+
+  _toggleRow(ctx, label, rect, on) {
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#f3e4c8';
+    ctx.font = '700 19px "Jua", system-ui, sans-serif';
+    ctx.fillText(label, 56, rect.y + rect.h / 2);
+
+    ctx.fillStyle = on ? '#7fc08a' : '#6a6155';
+    this._roundRect(ctx, rect.x, rect.y, rect.w, rect.h, rect.h / 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(on ? rect.x + rect.w - rect.h / 2 : rect.x + rect.h / 2, rect.y + rect.h / 2, rect.h / 2 - 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff6e2';
+    ctx.fill();
+    ctx.fillStyle = on ? '#2c4a32' : '#3a352d';
+    ctx.font = '700 13px "Jua", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(on ? 'ON' : 'OFF', on ? rect.x + 22 : rect.x + rect.w - 22, rect.y + rect.h / 2 + 1);
+  }
+
+  _drawSettings(ctx) {
+    ctx.save();
+    // opaque: the screen underneath must not read through a settings panel
+    ctx.fillStyle = '#191310';
+    ctx.fillRect(0, 0, DESIGN_W, DESIGN_H);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fbeed6';
+    ctx.font = '700 32px "Jua", system-ui, sans-serif';
+    ctx.fillText('설정', DESIGN_W / 2, 150);
+
+    this._toggleRow(ctx, '소리', this.getSoundToggleRect(), !this.muted);
+    this._toggleRow(ctx, '진동', this.getHapticToggleRect(), this.haptic);
+
+    const rr = this.getResetRect();
+    ctx.fillStyle = '#8a4a44';
+    this._roundRect(ctx, rr.x, rr.y, rr.w, rr.h, 11);
+    ctx.fill();
+    ctx.strokeStyle = '#6a332f';
+    ctx.lineWidth = 3;
+    this._roundRect(ctx, rr.x, rr.y, rr.w, rr.h, 11);
+    ctx.stroke();
+    ctx.fillStyle = '#ffe4de';
+    ctx.font = '700 19px "Jua", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('기록 초기화', rr.x + rr.w / 2, rr.y + rr.h / 2 + 1);
+
+    // stats footer gives the panel a reason to exist beyond toggles
+    ctx.fillStyle = '#8d8271';
+    ctx.font = '700 15px "Jua", system-ui, sans-serif';
+    ctx.fillText(`최고점수 ${this.best}    코인 ${this.coins}`, DESIGN_W / 2, 470);
+    ctx.fillText(`칼 ${save.unlockedIds().length}종 보유`, DESIGN_W / 2, 496);
+
+    if (this.shopMessageT > 0) {
+      ctx.globalAlpha = clamp(this.shopMessageT, 0, 1);
+      ctx.fillStyle = 'rgba(30,22,16,0.92)';
+      this._roundRect(ctx, 50, DESIGN_H - 150, DESIGN_W - 100, 40, 12);
+      ctx.fill();
+      ctx.fillStyle = '#ffe9a8';
+      ctx.font = '700 17px "Jua", system-ui, sans-serif';
+      ctx.fillText(this.shopMessage, DESIGN_W / 2, DESIGN_H - 129);
+      ctx.globalAlpha = 1;
+    }
+
+    const cl = this.getSettingsCloseRect();
+    this._menuButton(ctx, cl, '닫기', '#f5c132', '#c9942a', '#4a2d13');
+    ctx.restore();
+  }
+
+  _drawResetConfirm(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(18,13,9,0.86)';
+    ctx.fillRect(0, 0, DESIGN_W, DESIGN_H);
+    ctx.fillStyle = '#e8d7b4';
+    this._roundRect(ctx, 46, 330, DESIGN_W - 92, 196, 20);
+    ctx.fill();
+    ctx.strokeStyle = '#b99c6e';
+    ctx.lineWidth = 3;
+    this._roundRect(ctx, 46, 330, DESIGN_W - 92, 196, 20);
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#8c3b2c';
+    ctx.font = '700 22px "Jua", system-ui, sans-serif';
+    ctx.fillText('기록을 모두 지울까요?', DESIGN_W / 2, 382);
+    ctx.font = '700 15px "Jua", system-ui, sans-serif';
+    ctx.fillStyle = '#8a6a4c';
+    ctx.fillText('코인・칼・최고점수가 사라져요.', DESIGN_W / 2, 414);
+    this._menuButton(ctx, this.getResetConfirmRect(), '초기화', '#d8776b', '#a8534a', '#3d1512');
+    this._menuButton(ctx, this.getResetCancelRect(), '취소', '#f5c132', '#c9942a', '#4a2d13');
     ctx.restore();
   }
 
@@ -1075,7 +1344,8 @@ export class KnifeGame {
     ctx.font = '700 16px "Jua", system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`BEST ${this.best}`, DESIGN_W - 20, 74);
+    // sits below the pause button, which occupies the top-right corner
+    ctx.fillText(`BEST ${this.best}`, DESIGN_W - 20, 96);
     ctx.restore();
 
     // coin counter
@@ -1635,14 +1905,42 @@ export class KnifeGame {
     const p = this.toDesign(clientX, clientY);
     const inside = (r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 
-    // the quit dialog is modal: it swallows every tap while it is up
+    // Modal overlays swallow every tap, outermost first.
     if (this.exitConfirm) {
       if (inside(this.getExitConfirmRect())) { this.quitToTitle(); return; }
-      if (inside(this.getExitCancelRect())) { this.cancelExit(); return; }
+      if (inside(this.getExitCancelRect())) {
+        this.exitConfirm = false;
+        // came from the pause menu? fall back to it rather than straight to play
+        if (this.overlay !== 'pause') this.cancelExit();
+        this.sfx('click');
+        return;
+      }
+      return;
+    }
+
+    if (this.overlay === 'resetConfirm') {
+      if (inside(this.getResetConfirmRect())) { this.confirmReset(); return; }
+      if (inside(this.getResetCancelRect())) { this.cancelReset(); return; }
+      return;
+    }
+
+    if (this.overlay === 'settings') {
+      if (inside(this.getSettingsCloseRect())) { this.closeSettings(); return; }
+      if (inside(this.getSoundToggleRect())) { this.toggleSound(); return; }
+      if (inside(this.getHapticToggleRect())) { this.toggleHaptic(); return; }
+      if (inside(this.getResetRect())) { this.askReset(); return; }
+      return;
+    }
+
+    if (this.overlay === 'pause') {
+      if (inside(this.getResumeRect())) { this.resume(); return; }
+      if (inside(this.getPauseSettingsRect())) { this.openSettings(); return; }
+      if (inside(this.getQuitRect())) { this.askQuit(); return; }
       return;
     }
 
     if (this.status === 'title') {
+      if (inside(this.getSettingsRect())) { this.openSettings(); return; }
       if (p.y > 672 && p.y < 730) {
         if (p.x >= 40 && p.x <= 204) { this.openQuests(); return; }
         if (p.x >= 216 && p.x <= 380) { this.openShop(); return; }
@@ -1683,9 +1981,9 @@ export class KnifeGame {
       return;
     }
 
-    // quit button must be checked before the throw, or leaving would cost a knife
-    if (inside(this.getExitRect())) { this.askExit(); return; }
-    this.shoot();
+    // pause button must be checked before the throw, or pausing would cost a knife
+    if (inside(this.getPauseRect())) { this.pause(); return; }
+    if (this.shoot()) this.buzz(8);
   }
 
   // Vertical drag / wheel scroll for the shop grid.
@@ -1721,6 +2019,8 @@ export class KnifeGame {
       bossHp: L && L.boss ? L.boss.hp : 0,
       bossMaxHp: L && L.boss ? L.boss.maxHp : 0,
       exitConfirm: this.exitConfirm,
+      overlay: this.overlay,
+      paused: this.paused,
       equippedSkin: save.equipped,
       unlockedSkins: save.unlockedIds(),
       stagesCleared: save.stagesCleared,

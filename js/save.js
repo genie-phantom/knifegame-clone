@@ -12,6 +12,7 @@ const DEFAULTS = {
   unlocked: ['classic'],
   equipped: 'classic',
   muted: false,
+  haptic: true,
   // daily systems
   questDay: 0,        // dayKey the current quest set was rolled for
   questIds: [],
@@ -82,6 +83,7 @@ export const save = {
   get fruitCollected() { return state.fruitCollected; },
   get equipped() { return state.equipped; },
   get muted() { return state.muted; },
+  get haptic() { return state.haptic !== false; },
 
   isUnlocked(id) { return state.unlocked.includes(id); },
   unlockedIds() { return [...state.unlocked]; },
@@ -120,6 +122,7 @@ export const save = {
     return true;
   },
   setMuted(v) { state.muted = !!v; persist(); },
+  setHaptic(v) { state.haptic = !!v; persist(); },
 
   // ---------------- daily quests ----------------
   quests() {

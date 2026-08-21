@@ -79,14 +79,8 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-const soundBtn = document.getElementById('sound');
-soundBtn.textContent = game.muted ? '🔇' : '🔊';
-soundBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  game.muted = !game.muted;
-  save.setMuted(game.muted);
-  e.currentTarget.textContent = game.muted ? '🔇' : '🔊';
-});
+// Sound now lives in the in-game settings panel, so there is no floating
+// HTML control competing with the canvas UI.
 
 // shop grid scrolling with a mouse wheel
 canvas.addEventListener('wheel', (e) => {
@@ -209,6 +203,24 @@ window.__game = {
   getExitCancelRect: () => game.getExitCancelRect(),
   getHomeRect: () => game.getHomeRect(),
   getReplayRect: () => game.getReplayRect(),
+
+  // ---- pause / settings test surface ----
+  getPauseRect: () => game.getPauseRect(),
+  getResumeRect: () => game.getResumeRect(),
+  getPauseSettingsRect: () => game.getPauseSettingsRect(),
+  getQuitRect: () => game.getQuitRect(),
+  getSettingsRect: () => game.getSettingsRect(),
+  getSettingsCloseRect: () => game.getSettingsCloseRect(),
+  getSoundToggleRect: () => game.getSoundToggleRect(),
+  getHapticToggleRect: () => game.getHapticToggleRect(),
+  getResetRect: () => game.getResetRect(),
+  getResetConfirmRect: () => game.getResetConfirmRect(),
+  getResetCancelRect: () => game.getResetCancelRect(),
+  getSettings: () => game.getSettings(),
+  openSettings: () => game.openSettings(),
+  closeSettings: () => game.closeSettings(),
+  pause: () => game.pause(),
+  resume: () => game.resume(),
   // Convert design-space coords to client coords and go through the REAL tap
   // handler, so tests exercise the same path a finger does.
   tapDesign(dx, dy) {

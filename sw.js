@@ -1,6 +1,6 @@
 // Offline-first service worker. The game is fully static, so every asset is
 // precached on install and served cache-first; a bumped CACHE drops the old one.
-const CACHE = 'kkk-v4';
+const CACHE = 'kkk-v5';
 
 const ASSETS = [
   './',

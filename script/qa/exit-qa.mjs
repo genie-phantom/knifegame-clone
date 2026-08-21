@@ -32,14 +32,14 @@ try {
   if (!resp || !resp.ok()) throw new Error(`page load failed: HTTP ${resp ? resp.status() : 'no-response'}`);
   await ready();
 
-  // ---------- C1: exit button opens a confirm and does NOT throw a knife ----------
+  // ---------- C1: the in-game control opens the pause menu, throwing nothing ----------
   {
     const r = await page.evaluate(async () => {
       const G = window.__game;
       G.resetSave(); G.restart(); G.startGame();
       await new Promise((res) => requestAnimationFrame(res));
       const before = G.getState();
-      const rect = G.getExitRect();
+      const rect = G.getPauseRect();
       G.tapDesign(rect.x + rect.w / 2, rect.y + rect.h / 2);
       await new Promise((res) => requestAnimationFrame(res));
       const after = G.getState();
@@ -48,17 +48,18 @@ try {
     await page.screenshot({ path: path.join(EV, 'exit-confirm.png') });
     dump('exit-open', r);
     const pass =
-      r.after.exitConfirm === true &&
+      r.after.overlay === 'pause' &&
+      r.after.paused === true &&
       r.after.status === 'playing' &&
       r.after.flying === 0 &&                      // the tap must not have thrown
       r.after.knivesLeft === r.before.knivesLeft;  // and must not consume a knife
-    record('C1 exit button opens confirm without throwing', pass, {
-      exitConfirm: r.after.exitConfirm, flying: r.after.flying,
+    record('C1 in-game control opens the pause menu without throwing', pass, {
+      overlay: r.after.overlay, flying: r.after.flying,
       knives: [r.before.knivesLeft, r.after.knivesLeft],
     });
   }
 
-  // ---------- C2: while the confirm is up the run is frozen ----------
+  // ---------- C2: while the menu is up the run is frozen ----------
   {
     const r = await page.evaluate(async () => {
       const G = window.__game, g = G.instance;
@@ -69,15 +70,15 @@ try {
     });
     dump('exit-paused', r);
     const pass = r.moved < 0.001;
-    record('C2 run is paused while the confirm is open', pass, r);
+    record('C2 run is paused while the menu is open', pass, r);
   }
 
-  // ---------- C3: cancelling resumes the same run, progress intact ----------
+  // ---------- C3: resuming continues the same run, progress intact ----------
   {
     const r = await page.evaluate(async () => {
       const G = window.__game;
       const before = G.getState();
-      const rect = G.getExitCancelRect();
+      const rect = G.getResumeRect();
       G.tapDesign(rect.x + rect.w / 2, rect.y + rect.h / 2);
       await new Promise((res) => requestAnimationFrame(res));
       const after = G.getState();
@@ -89,32 +90,39 @@ try {
     });
     dump('exit-cancel', r);
     const pass =
-      r.after.exitConfirm === false &&
+      r.after.overlay === null &&
       r.after.status === 'playing' &&
       r.after.score === r.before.score &&
       r.after.stage === r.before.stage &&
       r.moved === true;
-    record('C3 cancel resumes the run with progress intact', pass, {
-      exitConfirm: r.after.exitConfirm, status: r.after.status,
+    record('C3 resume continues the run with progress intact', pass, {
+      overlay: r.after.overlay, status: r.after.status,
       score: [r.before.score, r.after.score], resumedSpinning: r.moved,
     });
   }
 
-  // ---------- C4: confirming leaves the run and returns to the title ----------
+  // ---------- C4: pause -> 메인으로 -> confirm returns to the title ----------
   {
     const r = await page.evaluate(async () => {
       const G = window.__game;
-      G.tapDesign(G.getExitRect().x + 20, G.getExitRect().y + 20);
-      await new Promise((res) => requestAnimationFrame(res));
+      const step = () => new Promise((res) => requestAnimationFrame(res));
+      const pr = G.getPauseRect();
+      G.tapDesign(pr.x + pr.w / 2, pr.y + pr.h / 2);
+      await step();
+      const qr = G.getQuitRect();
+      G.tapDesign(qr.x + qr.w / 2, qr.y + qr.h / 2);
+      await step();
       const rect = G.getExitConfirmRect();
       G.tapDesign(rect.x + rect.w / 2, rect.y + rect.h / 2);
-      await new Promise((res) => requestAnimationFrame(res));
+      await step();
       return G.getState();
     });
     await page.screenshot({ path: path.join(EV, 'exit-title.png') });
     dump('exit-confirm-yes', r);
-    const pass = r.status === 'title' && r.exitConfirm === false;
-    record('C4 confirming returns to the title screen', pass, { status: r.status, exitConfirm: r.exitConfirm });
+    const pass = r.status === 'title' && r.exitConfirm === false && r.overlay === null;
+    record('C4 quitting from the pause menu returns to the title', pass, {
+      status: r.status, exitConfirm: r.exitConfirm, overlay: r.overlay,
+    });
   }
 
   // ---------- C5: game over offers a way home instead of only replaying ----------

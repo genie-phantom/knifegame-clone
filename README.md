@@ -18,9 +18,15 @@ Tap / click anywhere to throw a knife. Space or Enter works too.
 - A wooden log spins in front of you; tap to throw a knife straight up.
 - The knife sticks where it lands and scores a point.
 - Hit a knife that is already stuck and the run ends.
-- The X in the top right quits mid-run, behind a confirm so a stray tap cannot
-  end a good run. The game freezes while the dialog is open and your score is
-  banked before you leave.
+- The pause button in the top right opens a menu: 계속하기 / 설정 / 메인으로.
+  The run freezes while it is open, so pausing never costs a throw, and
+  quitting sits behind a confirm with your score banked before you leave.
+
+### Settings
+
+Reachable from the gear on the title screen and from the pause menu, and it
+returns to whichever one opened it. Holds sound and vibration toggles (both
+persisted) plus a reset-progress action behind its own confirm.
 - Clearing a stage's four knives advances to the next stage, which spawns a
   new log pattern with its own rotation choreography.
 
@@ -93,6 +99,7 @@ script/qa/knife-qa.mjs      core mechanics QA
 script/qa/content-qa.mjs    progression systems QA
 script/qa/retention-qa.mjs  boss-stage bugfixes + quest/streak QA
 script/qa/exit-qa.mjs       quit-to-title flow QA
+script/qa/settings-qa.mjs   pause menu + settings + reset QA
 ```
 
 ## QA
