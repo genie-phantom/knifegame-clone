@@ -61,6 +61,7 @@ export class KnifeGame {
     this.shopScroll = 0;
     this.shopMessage = '';
     this.shopMessageT = 0;
+    this.exitConfirm = false;   // quit-to-title dialog is up; the run is frozen
 
     this.log = null;
     this.flying = [];     // knives in flight or bouncing away
@@ -137,8 +138,44 @@ export class KnifeGame {
     this.particles.length = 0;
     this.floaters.length = 0;
     this.gameOverVisible = false;
+    // snap the overlay off: it eases toward its target, so without this the
+    // dead game-over panel keeps fading over the title screen after quitting
+    this.overlayAlpha = 0;
+    this.exitConfirm = false;
     this.hasKnifeReady = false;
     this._titleLog();
+  }
+
+  // ---------------- quit to title ----------------
+  // Hit rects live here so drawing, tap routing and tests all agree.
+  getExitRect() { return { x: DESIGN_W - 58, y: 16, w: 42, h: 42 }; }
+  getExitConfirmRect() { return { x: DESIGN_W / 2 - 118, y: 452, w: 108, h: 50 }; }
+  getExitCancelRect() { return { x: DESIGN_W / 2 + 10, y: 452, w: 108, h: 50 }; }
+  getReplayRect() { return { x: DESIGN_W / 2 + 8, y: 600, w: 142, h: 60 }; }
+  getHomeRect() { return { x: DESIGN_W / 2 - 150, y: 600, w: 142, h: 60 }; }
+
+  askExit() {
+    if (this.status !== 'playing' || this.exitConfirm) return false;
+    this.exitConfirm = true;
+    this.sfx('click');
+    return true;
+  }
+
+  cancelExit() {
+    if (!this.exitConfirm) return false;
+    this.exitConfirm = false;
+    this.sfx('click');
+    return true;
+  }
+
+  // Leave the run. The score is banked first so quitting never silently
+  // discards a personal best.
+  quitToTitle() {
+    save.recordBest(this.score);
+    this.exitConfirm = false;
+    this.restart();
+    this.sfx('click');
+    return true;
   }
 
   openShop() { if (this.status === 'title') this.status = 'shop'; }
@@ -596,6 +633,10 @@ export class KnifeGame {
       for (const f of this.log.fruits) if (f.pop > 0) f.pop = Math.max(0, f.pop - dt);
     }
 
+    // While the quit dialog is up the run is frozen: the log stops turning and
+    // knives stop moving, so opening it can never cost the player a throw.
+    if (this.exitConfirm) return;
+
     if (this.log) {
       const L = this.log;
       if (L.hiddenTimer > 0) L.hiddenTimer -= dt;
@@ -677,9 +718,11 @@ export class KnifeGame {
     ctx.translate(this.offX, this.offY);
     ctx.scale(this.scale, this.scale);
     if (this.status === 'playing' || this.status === 'gameover') this._drawHud(ctx);
+    if (this.status === 'playing') this._drawExitButton(ctx);
     if (this.status === 'title') this._drawTitle(ctx);
     if (this.status === 'shop') this._drawShop(ctx);
     if (this.status === 'quests') this._drawQuests(ctx);
+    if (this.exitConfirm) this._drawExitConfirm(ctx);
     if (this.overlayAlpha > 0.01) this._drawGameOver(ctx);
     ctx.restore();
   }
@@ -921,6 +964,77 @@ export class KnifeGame {
       ctx.fillStyle = f.color;
       ctx.fillText(f.text, f.x, f.y);
     }
+    ctx.restore();
+  }
+
+  // Quit button: a small X badge in the top-right of the play HUD.
+  _drawExitButton(ctx) {
+    const r = this.getExitRect();
+    ctx.save();
+    ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
+    ctx.beginPath();
+    ctx.arc(0, 0, r.w / 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(30,24,18,0.55)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(243,228,200,0.35)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.strokeStyle = '#f3e4c8';
+    ctx.lineWidth = 3.2;
+    ctx.lineCap = 'round';
+    const k = 8;
+    ctx.beginPath();
+    ctx.moveTo(-k, -k); ctx.lineTo(k, k);
+    ctx.moveTo(k, -k); ctx.lineTo(-k, k);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawExitConfirm(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(18,13,9,0.78)';
+    ctx.fillRect(0, 0, DESIGN_W, DESIGN_H);
+
+    ctx.fillStyle = '#e8d7b4';
+    this._roundRect(ctx, 46, 330, DESIGN_W - 92, 196, 20);
+    ctx.fill();
+    ctx.strokeStyle = '#b99c6e';
+    ctx.lineWidth = 3;
+    this._roundRect(ctx, 46, 330, DESIGN_W - 92, 196, 20);
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#6b3f27';
+    ctx.font = '700 23px "Jua", system-ui, sans-serif';
+    ctx.fillText('게임을 끝낼까요?', DESIGN_W / 2, 382);
+    ctx.font = '700 15px "Jua", system-ui, sans-serif';
+    ctx.fillStyle = '#8a6a4c';
+    ctx.fillText('현재 점수는 기록돼요.', DESIGN_W / 2, 414);
+
+    const yes = this.getExitConfirmRect();
+    ctx.fillStyle = '#d8776b';
+    this._roundRect(ctx, yes.x, yes.y, yes.w, yes.h, 11);
+    ctx.fill();
+    ctx.strokeStyle = '#a8534a';
+    ctx.lineWidth = 3;
+    this._roundRect(ctx, yes.x, yes.y, yes.w, yes.h, 11);
+    ctx.stroke();
+    ctx.fillStyle = '#3d1512';
+    ctx.font = '700 20px "Jua", system-ui, sans-serif';
+    ctx.fillText('나가기', yes.x + yes.w / 2, yes.y + yes.h / 2 + 1);
+
+    const no = this.getExitCancelRect();
+    ctx.fillStyle = '#f5c132';
+    this._roundRect(ctx, no.x, no.y, no.w, no.h, 11);
+    ctx.fill();
+    ctx.strokeStyle = '#c9942a';
+    ctx.lineWidth = 3;
+    this._roundRect(ctx, no.x, no.y, no.w, no.h, 11);
+    ctx.stroke();
+    ctx.fillStyle = '#4a2d13';
+    ctx.font = '700 20px "Jua", system-ui, sans-serif';
+    ctx.fillText('계속하기', no.x + no.w / 2, no.y + no.h / 2 + 1);
     ctx.restore();
   }
 
@@ -1455,16 +1569,30 @@ export class KnifeGame {
     ctx.fillText(`+${this.runCoins}`, DESIGN_W / 2 - 14, 535);
     ctx.textAlign = 'center';
 
+    // home + replay, side by side so leaving is always an option after a run
+    const home = this.getHomeRect();
+    ctx.fillStyle = '#cbbfa8';
+    this._roundRect(ctx, home.x, home.y, home.w, home.h, 12);
+    ctx.fill();
+    ctx.strokeStyle = '#9d9179';
+    ctx.lineWidth = 4;
+    this._roundRect(ctx, home.x, home.y, home.w, home.h, 12);
+    ctx.stroke();
+    ctx.fillStyle = '#3f3423';
+    ctx.font = '700 22px "Jua", system-ui, sans-serif';
+    ctx.fillText('홈으로', home.x + home.w / 2, home.y + home.h / 2 + 1);
+
+    const rep = this.getReplayRect();
     ctx.fillStyle = '#f5c132';
-    this._roundRect(ctx, 110, 600, DESIGN_W - 220, 60, 12);
+    this._roundRect(ctx, rep.x, rep.y, rep.w, rep.h, 12);
     ctx.fill();
     ctx.strokeStyle = '#c9942a';
     ctx.lineWidth = 4;
-    this._roundRect(ctx, 110, 600, DESIGN_W - 220, 60, 12);
+    this._roundRect(ctx, rep.x, rep.y, rep.w, rep.h, 12);
     ctx.stroke();
     ctx.fillStyle = '#4a2d13';
-    ctx.font = '700 24px "Jua", system-ui, sans-serif';
-    ctx.fillText('다시하기', DESIGN_W / 2, 631);
+    ctx.font = '700 22px "Jua", system-ui, sans-serif';
+    ctx.fillText('다시하기', rep.x + rep.w / 2, rep.y + rep.h / 2 + 1);
     ctx.restore();
   }
 
@@ -1505,6 +1633,14 @@ export class KnifeGame {
 
   handleTap(clientX, clientY) {
     const p = this.toDesign(clientX, clientY);
+    const inside = (r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+
+    // the quit dialog is modal: it swallows every tap while it is up
+    if (this.exitConfirm) {
+      if (inside(this.getExitConfirmRect())) { this.quitToTitle(); return; }
+      if (inside(this.getExitCancelRect())) { this.cancelExit(); return; }
+      return;
+    }
 
     if (this.status === 'title') {
       if (p.y > 672 && p.y < 730) {
@@ -1517,7 +1653,6 @@ export class KnifeGame {
 
     if (this.status === 'quests') {
       const R = this.questRects();
-      const inside = (r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
       if (inside(R.close)) { this.closeQuests(); return; }
       if (inside(R.daily)) { this.claimDaily(); return; }
       for (const c of R.cards) {
@@ -1540,9 +1675,16 @@ export class KnifeGame {
     }
 
     if (this.status === 'gameover') {
-      if (this.gameOverVisible) { this.restart(); this.startGame(); }
+      if (!this.gameOverVisible) return;
+      if (inside(this.getHomeRect())) { this.restart(); this.sfx('click'); return; }
+      // anywhere else replays, keeping the original one-tap retry feel
+      this.restart();
+      this.startGame();
       return;
     }
+
+    // quit button must be checked before the throw, or leaving would cost a knife
+    if (inside(this.getExitRect())) { this.askExit(); return; }
     this.shoot();
   }
 
@@ -1578,6 +1720,7 @@ export class KnifeGame {
       isBoss: L ? !!L.boss : false,
       bossHp: L && L.boss ? L.boss.hp : 0,
       bossMaxHp: L && L.boss ? L.boss.maxHp : 0,
+      exitConfirm: this.exitConfirm,
       equippedSkin: save.equipped,
       unlockedSkins: save.unlockedIds(),
       stagesCleared: save.stagesCleared,

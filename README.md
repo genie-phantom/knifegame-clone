@@ -18,6 +18,9 @@ Tap / click anywhere to throw a knife. Space or Enter works too.
 - A wooden log spins in front of you; tap to throw a knife straight up.
 - The knife sticks where it lands and scores a point.
 - Hit a knife that is already stuck and the run ends.
+- The X in the top right quits mid-run, behind a confirm so a stray tap cannot
+  end a good run. The game freezes while the dialog is open and your score is
+  banked before you leave.
 - Clearing a stage's four knives advances to the next stage, which spawns a
   new log pattern with its own rotation choreography.
 
@@ -89,6 +92,7 @@ js/main.js          asset loading, input wiring, window.__game test surface
 script/qa/knife-qa.mjs      core mechanics QA
 script/qa/content-qa.mjs    progression systems QA
 script/qa/retention-qa.mjs  boss-stage bugfixes + quest/streak QA
+script/qa/exit-qa.mjs       quit-to-title flow QA
 ```
 
 ## QA

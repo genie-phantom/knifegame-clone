@@ -202,5 +202,17 @@ window.__game = {
   openQuests: () => game.openQuests(),
   closeQuests: () => game.closeQuests(),
   debugSetQuestProgress: (id, v) => save.setQuestProgress(id, v),
+
+  // ---- exit-to-title test surface ----
+  getExitRect: () => game.getExitRect(),
+  getExitConfirmRect: () => game.getExitConfirmRect(),
+  getExitCancelRect: () => game.getExitCancelRect(),
+  getHomeRect: () => game.getHomeRect(),
+  getReplayRect: () => game.getReplayRect(),
+  // Convert design-space coords to client coords and go through the REAL tap
+  // handler, so tests exercise the same path a finger does.
+  tapDesign(dx, dy) {
+    game.handleTap(game.offX + dx * game.scale, game.offY + dy * game.scale);
+  },
   debugAdvanceDay: (n) => { __setDayOffset(n); return game.getQuests(); },
 };
