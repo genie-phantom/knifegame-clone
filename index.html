@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>칼칼칼</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #3b332b;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #game { display: block; width: 100%; height: 100%; cursor: pointer; }
+  #sound {
+    position: fixed; top: max(14px, env(safe-area-inset-top)); left: 14px;
+    width: 40px; height: 40px; border: 0; border-radius: 50%;
+    background: rgba(20,14,10,0.45); color: #f3e4c8;
+    font-size: 19px; line-height: 40px; cursor: pointer; z-index: 5;
+  }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <button id="sound" type="button" aria-label="소리 켜기/끄기">🔊</button>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
