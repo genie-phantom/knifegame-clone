@@ -3,7 +3,16 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>칼칼칼</title>
+<title>칼칼칼 - 칼 던지기 게임</title>
+<meta name="description" content="회전하는 통나무에 칼을 꽂아라! 콤보를 쌓고 보스를 쓰러뜨려 코인을 모아 새로운 칼을 수집하세요." />
+<meta name="theme-color" content="#413830" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="칼칼칼" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/icon/favicon.png" type="image/png" />
+<link rel="apple-touch-icon" href="assets/icon/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
@@ -28,5 +37,12 @@
   <canvas id="game"></canvas>
   <button id="sound" type="button" aria-label="소리 켜기/끄기">🔊</button>
   <script type="module" src="js/main.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => { /* offline play unavailable */ });
+      });
+    }
+  </script>
 </body>
 </html>

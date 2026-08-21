@@ -1,9 +1,11 @@
 import { KnifeGame } from './game.js';
+import { save } from './save.js';
 
 const IMG = {
   bg: 'assets/img/bg.png',
   log: 'assets/img/log.png',
   dagger: 'assets/img/dagger.png',
+  spark: 'assets/img/spark.png',
 };
 const SFX = {
   hit1: 'assets/sfx/hit1.mp3',
@@ -42,10 +44,34 @@ const game = new KnifeGame(canvas, assets);
 
 const tap = (x, y) => game.handleTap(x, y);
 
+// Pointer handling. Outside the shop a press acts immediately so throwing stays
+// as responsive as the original. In the shop the action is deferred to release
+// and suppressed when the pointer was dragged, so scrolling never buys a skin.
+let press = null;
+
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
-  tap(e.clientX, e.clientY);
+  press = { x: e.clientX, y: e.clientY, moved: 0, shop: game.status === 'shop' };
+  if (!press.shop) tap(e.clientX, e.clientY);
 });
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!press) return;
+  const dy = press.y - e.clientY;
+  press.moved += Math.abs(dy) + Math.abs(press.x - e.clientX);
+  press.x = e.clientX;
+  press.y = e.clientY;
+  if (press.shop) game.scrollShop(dy);
+});
+
+const endPress = (e) => {
+  if (!press) return;
+  if (press.shop && press.moved < 12) tap(e.clientX, e.clientY);
+  press = null;
+};
+canvas.addEventListener('pointerup', endPress);
+canvas.addEventListener('pointercancel', () => { press = null; });
+
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Space' || e.code === 'Enter') {
     e.preventDefault();
@@ -53,12 +79,21 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-document.getElementById('sound').addEventListener('click', (e) => {
+const soundBtn = document.getElementById('sound');
+soundBtn.textContent = game.muted ? '🔇' : '🔊';
+soundBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   game.muted = !game.muted;
-  localStorage.setItem('kkk_muted', game.muted ? '1' : '0');
+  save.setMuted(game.muted);
   e.currentTarget.textContent = game.muted ? '🔇' : '🔊';
 });
+
+// shop grid scrolling with a mouse wheel
+canvas.addEventListener('wheel', (e) => {
+  if (game.status !== 'shop') return;
+  e.preventDefault();
+  game.scrollShop(e.deltaY);
+}, { passive: false });
 
 // ---- deterministic control surface used by script/qa/knife-qa.mjs ----
 const norm360 = (d) => ((d % 360) + 360) % 360;
@@ -73,10 +108,15 @@ function aimLogAt(localTargetAngle) {
   game.log.angle = norm360(-localTargetAngle);
 }
 
+// An angle clear of both stuck knives and live fruit, so a "plain" test throw
+// never accidentally collects a fruit and skews coin/combo assertions.
 function freeLocalAngle() {
-  const taken = game.log.knives.map((k) => k.angle);
+  const taken = [
+    ...game.log.knives.map((k) => k.angle),
+    ...game.log.fruits.filter((f) => f.alive).map((f) => f.angle),
+  ];
   for (let a = 0; a < 360; a += 3) {
-    if (taken.every((t) => angDist(t, a) > 24)) return a;
+    if (taken.every((t) => angDist(t, a) > 26)) return a;
   }
   return 0;
 }
@@ -116,5 +156,40 @@ window.__game = {
     game.log.targetSpeed = 0;
     game.log.timer = 99;
     return game.shoot();
+  },
+
+  // ---- content-depth test surface ----
+  spawnFruitForTest() {
+    game.log.fruits.length = 0;
+    game._spawnFruits(game.log, 1);
+    return game.log.fruits.map((f) => f.angle);
+  },
+  throwAtFruit() {
+    const fruit = game.log.fruits.find((f) => f.alive);
+    if (!fruit) throw new Error('no live fruit to aim at');
+    aimLogAt(fruit.angle);
+    game.log.speed = 0;
+    game.log.targetSpeed = 0;
+    game.log.timer = 99;
+    return game.shoot();
+  },
+  jumpToStage(stageNo) {
+    game.stage = stageNo - 1;
+    game._nextStage(0);
+    game.hasKnifeReady = false;
+    game._spawnKnife();
+    return game.getState();
+  },
+  grantCoins: (n) => game.coins = save.addCoins(n),
+  getShop: () => game.getShop(),
+  buySkin: (id) => game.buySkin(id),
+  equipSkin: (id) => game.equipSkin(id),
+  openShop: () => game.openShop(),
+  closeShop: () => game.closeShop(),
+  resetSave() {
+    save.reset();
+    game.coins = save.coins;
+    game.best = save.best;
+    game.fruitCollected = save.fruitCollected;
   },
 };

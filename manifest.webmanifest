@@ -1,0 +1,40 @@
+{
+  "name": "칼칼칼 - 칼 던지기 게임",
+  "short_name": "칼칼칼",
+  "description": "회전하는 통나무에 칼을 꽂아라! 콤보를 쌓고 보스를 쓰러뜨려 코인을 모아 새로운 칼을 수집하는 캐주얼 아케이드 게임.",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#413830",
+  "theme_color": "#413830",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "assets/icon/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/icon/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

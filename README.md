@@ -21,6 +21,35 @@ Tap / click anywhere to throw a knife. Space or Enter works too.
 - Clearing a stage's four knives advances to the next stage, which spawns a
   new log pattern with its own rotation choreography.
 
+### Progression systems
+
+- **Combo** — consecutive hits raise a score multiplier (up to x5). The first
+  hit of a streak is worth a plain point; the bonus builds from the second on.
+  A failed throw resets it.
+- **Apples** — fruit rides the rim from stage 2. Splitting one pays coins and
+  bursts into juice, but it occupies an angle you now cannot reuse.
+- **Boss stages** — every 5th stage is a boss with a health bar that soaks
+  several hits and pays a large coin bounty. Bosses grow tougher over time.
+- **Shop** — nine knives with distinct silhouettes (cleaver, kunai, katana,
+  trident, glowing ember/frost/void variants) unlock with coins and persist.
+- **Save** — coins, unlocked and equipped skins, best score, stages cleared
+  and fruit collected all persist in `localStorage`.
+
+## Install / Play Store
+
+The game ships as an installable PWA: `manifest.webmanifest` with maskable
+icons, a precaching service worker (`sw.js`) for offline play, and portrait
+`standalone` display. That makes it packageable for the Play Store as a
+Trusted Web Activity without further code changes:
+
+```sh
+npx @bubblewrap/cli init --manifest https://genie-phantom.github.io/knifegame-clone/manifest.webmanifest
+npx @bubblewrap/cli build      # produces a signed AAB for the Play Console
+```
+
+Publishing still needs a Play Console account, a signing key, and Digital
+Asset Links (`.well-known/assetlinks.json`) to remove the URL bar.
+
 ## Fidelity to the original
 
 Mechanics and tuning were taken from the original PlayCanvas build's
@@ -43,20 +72,27 @@ Art and sound (`assets/`) are the original game's files.
 ## Layout
 
 ```
-index.html          canvas shell + fonts
+index.html          canvas shell, PWA meta, SW registration
+manifest.webmanifest / sw.js   installability + offline precache
 js/game.js          engine: state machine, physics, collision, rendering
 js/patterns.js      stage table + per-pattern rotation data (from the original)
+js/skins.js         knife catalog; every non-default skin is drawn procedurally
+js/save.js          localStorage meta-progression with legacy-save migration
 js/main.js          asset loading, input wiring, window.__game test surface
-script/qa/knife-qa.mjs   Playwright QA covering the three core behaviours
+script/qa/knife-qa.mjs     core mechanics QA
+script/qa/content-qa.mjs   progression systems QA
 ```
 
 ## QA
 
 ```sh
 python3 -m http.server 8099 &
-node script/qa/knife-qa.mjs --url http://127.0.0.1:8099/
+node script/qa/knife-qa.mjs   --url http://127.0.0.1:8099/
+node script/qa/content-qa.mjs --url http://127.0.0.1:8099/
 ```
 
-Covers: a knife sticking and scoring, hitting a stuck knife ending the run,
-and stage progression resetting the knife count with a new rotation profile.
-Requires `playwright` to be installed.
+`knife-qa` covers the core loop: a knife sticking and scoring, hitting a stuck
+knife ending the run, and stage progression resetting the knife count with a
+new rotation profile. `content-qa` covers the progression layer: fruit paying
+coins, the combo multiplier scaling score, a boss surviving multiple hits, and
+a shop purchase surviving a reload. Requires `playwright`.
