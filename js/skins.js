@@ -144,6 +144,44 @@ function drawKatana(ctx, o) {
   }
 }
 
+function drawScythe(ctx, o) {
+  // hooked blade sweeping off one side of a long shaft
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(-20, 10, -14, 30);
+  ctx.quadraticCurveTo(-8, 16, 4, 12);
+  ctx.closePath();
+  ctx.fillStyle = metalFill(ctx, o.light, o.dark);
+  ctx.fill();
+  outline(ctx);
+  ctx.beginPath();
+  ctx.rect(-3, 8, 7, BLADE_L * 0.72);
+  ctx.fillStyle = o.guard;
+  ctx.fill();
+  outline(ctx, 2);
+  grip(ctx, 8 + BLADE_L * 0.72, 7, TOTAL_L - BLADE_L * 0.72 - 20, o.grip, o.gripDark, o.guard);
+}
+
+function drawSpear(ctx, o) {
+  // long leaf head on a slim shaft
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(9, BLADE_L * 0.22, 7, BLADE_L * 0.5);
+  ctx.quadraticCurveTo(3, BLADE_L * 0.58, 0, BLADE_L * 0.58);
+  ctx.quadraticCurveTo(-3, BLADE_L * 0.58, -7, BLADE_L * 0.5);
+  ctx.quadraticCurveTo(-9, BLADE_L * 0.22, 0, 0);
+  ctx.closePath();
+  ctx.fillStyle = metalFill(ctx, o.light, o.dark);
+  ctx.fill();
+  outline(ctx);
+  ctx.beginPath();
+  ctx.ellipse(0, BLADE_L * 0.6, 9, 4, 0, 0, Math.PI * 2);
+  ctx.fillStyle = o.guard;
+  ctx.fill();
+  outline(ctx, 2);
+  grip(ctx, BLADE_L * 0.63, 5.5, TOTAL_L - BLADE_L * 0.63 - 8, o.grip, o.gripDark, o.guard);
+}
+
 function drawTrident(ctx, o) {
   // three-pronged fork
   ctx.fillStyle = metalFill(ctx, o.light, o.dark);
@@ -212,8 +250,24 @@ export const SKINS = [
     palette: { light: '#dfe6ea', dark: '#8b979f', guard: '#b0873a', grip: '#3d4a52', gripDark: '#232d33' },
   },
   {
+    id: 'scythe', name: '사이더', price: 1000, draw: drawScythe,
+    palette: { light: '#e6ebee', dark: '#8d979e', guard: '#6b5136', grip: '#4a3826', gripDark: '#2c2116' },
+  },
+  {
     id: 'void', name: '공허의 칼', price: 1200, draw: withGlow(drawKatana, 'rgba(180,110,255,0.95)'),
     palette: { light: '#e5d4ff', dark: '#7b4fc0', guard: '#c9a2ff', grip: '#2a1746', gripDark: '#170b28' },
+  },
+  {
+    id: 'spear', name: '장창', price: 1500, draw: drawSpear,
+    palette: { light: '#f0e4c8', dark: '#b89a5e', guard: '#c9a13c', grip: '#3a2c1c', gripDark: '#221708' },
+  },
+  {
+    id: 'venom', name: '맹독 단검', price: 1900, draw: withGlow(drawCleaver, 'rgba(120,240,120,0.9)'),
+    palette: { light: '#e0ffd8', dark: '#5fbf5a', guard: '#8fe07a', grip: '#1e3d1c', gripDark: '#0f2410' },
+  },
+  {
+    id: 'solar', name: '태양의 검', price: 2600, draw: withGlow(drawTrident, 'rgba(255,215,90,0.95)'),
+    palette: { light: '#fff4c9', dark: '#e8a92c', guard: '#ffd35c', grip: '#6b4410', gripDark: '#3d2607' },
   },
 ];
 

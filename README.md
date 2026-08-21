@@ -30,10 +30,16 @@ Tap / click anywhere to throw a knife. Space or Enter works too.
   bursts into juice, but it occupies an angle you now cannot reuse.
 - **Boss stages** — every 5th stage is a boss with a health bar that soaks
   several hits and pays a large coin bounty. Bosses grow tougher over time.
-- **Shop** — nine knives with distinct silhouettes (cleaver, kunai, katana,
-  trident, glowing ember/frost/void variants) unlock with coins and persist.
-- **Save** — coins, unlocked and equipped skins, best score, stages cleared
-  and fruit collected all persist in `localStorage`.
+- **Shop** — thirteen knives with distinct silhouettes (cleaver, kunai, katana,
+  trident, scythe, spear, glowing ember/frost/venom/solar/void variants) unlock
+  with coins and persist.
+- **Daily quests** — three quests a day, drawn from a pool by a day-seeded PRNG
+  so the set is stable across reloads and devices. Progress tracks live from
+  gameplay; each pays its coin reward once and the set refreshes at midnight.
+- **Login streak** — consecutive days escalate the bonus (20 → 150, plateauing
+  after a week). Missing a day resets the streak to 1.
+- **Save** — coins, unlocked and equipped skins, best score, stages cleared,
+  fruit collected, quest progress and streak all persist in `localStorage`.
 
 ## Install / Play Store
 
@@ -77,10 +83,12 @@ manifest.webmanifest / sw.js   installability + offline precache
 js/game.js          engine: state machine, physics, collision, rendering
 js/patterns.js      stage table + per-pattern rotation data (from the original)
 js/skins.js         knife catalog; every non-default skin is drawn procedurally
+js/quests.js        daily quest pool, day-seeded roll, streak reward table
 js/save.js          localStorage meta-progression with legacy-save migration
 js/main.js          asset loading, input wiring, window.__game test surface
-script/qa/knife-qa.mjs     core mechanics QA
-script/qa/content-qa.mjs   progression systems QA
+script/qa/knife-qa.mjs      core mechanics QA
+script/qa/content-qa.mjs    progression systems QA
+script/qa/retention-qa.mjs  boss-stage bugfixes + quest/streak QA
 ```
 
 ## QA
@@ -95,4 +103,6 @@ node script/qa/content-qa.mjs --url http://127.0.0.1:8099/
 knife ending the run, and stage progression resetting the knife count with a
 new rotation profile. `content-qa` covers the progression layer: fruit paying
 coins, the combo multiplier scaling score, a boss surviving multiple hits, and
-a shop purchase surviving a reload. Requires `playwright`.
+a shop purchase surviving a reload. `retention-qa` covers the boss-stage
+bugfixes plus quest claiming, daily rollover and streak reset. Requires
+`playwright`.

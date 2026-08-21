@@ -41,11 +41,12 @@ export class KnifeGame {
     this.assets = assets;
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
 
-    this.status = 'title'; // title | playing | gameover | shop
+    this.status = 'title'; // title | playing | gameover | shop | quests
     this.stage = 0;
     this.score = 0;
     this.best = save.best;
     this.knivesLeft = 0;
+    this.stageKnives = stageConfig(0).requireKnife + 1;
 
     // content-depth state
     this.coins = save.coins;
@@ -119,6 +120,8 @@ export class KnifeGame {
     this.floaters.length = 0;
     this.gameOverVisible = false;
     this.log = null;
+    save.reportMetric('games', 1);
+    save.reportMetric('stage', 1);
     this._nextStage(0);
     this._spawnKnife();
     this.sfx('click');
@@ -140,6 +143,48 @@ export class KnifeGame {
 
   openShop() { if (this.status === 'title') this.status = 'shop'; }
   closeShop() { if (this.status === 'shop') this.status = 'title'; }
+  openQuests() { if (this.status === 'title') this.status = 'quests'; }
+  closeQuests() { if (this.status === 'quests') this.status = 'title'; }
+
+  // ---------------- quests / daily ----------------
+  getQuests() { return save.quests(); }
+  getDaily() { return save.dailyStatus(); }
+
+  claimQuest(id) {
+    const ok = save.claimQuest(id);
+    if (ok) {
+      this.coins = save.coins;
+      this.coinPulse = 1;
+      this.shopMessage = '퀴스트 보상 획득!';
+      this.shopMessageT = 1.6;
+      this.sfx('bang');
+    }
+    return ok;
+  }
+
+  claimDaily() {
+    const r = save.claimDaily();
+    if (r.ok) {
+      this.coins = save.coins;
+      this.coinPulse = 1;
+      this.shopMessage = `${r.streak}일 연속 출석! +${r.reward}`;
+      this.shopMessageT = 1.8;
+      this.sfx('bang');
+    }
+    return r;
+  }
+
+  // Layout rects for the quest panel, shared by drawing and hit-testing.
+  questRects() {
+    const quests = this.getQuests();
+    return {
+      daily: { x: 34, y: 152, w: DESIGN_W - 68, h: 78 },
+      cards: quests.map((q, i) => ({
+        quest: q, x: 34, y: 258 + i * 96, w: DESIGN_W - 68, h: 84,
+      })),
+      close: { x: 110, y: DESIGN_H - 92, w: DESIGN_W - 220, h: 56 },
+    };
+  }
 
   get isBoss() { return this.log ? !!this.log.boss : false; }
   // Multiplier reflects the streak ALREADY banked, so the first hit of a run
@@ -205,7 +250,10 @@ export class KnifeGame {
     const isBoss = stageNo % BOSS_EVERY === 0;
     const bossHp = isBoss ? 3 + Math.floor(this.stage / BOSS_EVERY) : 0;
 
-    this.knivesLeft = (isBoss ? bossHp + 2 : cfg.requireKnife) + 1;
+    // Knives granted for this stage. A boss gets its HP plus a small margin of
+    // spare throws, so it is beatable but still losable by running dry.
+    this.stageKnives = (isBoss ? bossHp + 2 : cfg.requireKnife) + 1;
+    this.knivesLeft = this.stageKnives;
     this.log = {
       name,
       angle: 0,
@@ -237,10 +285,9 @@ export class KnifeGame {
     this.knivesLeft--;
     if (this.knivesLeft < 0) {
       if (this.log && this.log.boss && this.log.boss.hp > 0) {
-        // out of knives with the boss still standing: give one more so the
-        // run ends on a real miss rather than a silent stall
-        this.knivesLeft = 0;
-        this.hasKnifeReady = true;
+        // Out of knives with the boss still standing: the run is lost. Handing
+        // out another knife here would make a boss stage unloseable.
+        this._onBossSurvived();
         return;
       }
       this._clearStage();
@@ -249,10 +296,25 @@ export class KnifeGame {
     this.hasKnifeReady = true;
   }
 
+  // Boss outlasted the player's knives — end the run like any other failure.
+  _onBossSurvived() {
+    this.hasKnifeReady = false;
+    this.knivesLeft = 0;
+    this.combo = 0;
+    this.shake = 12;
+    this.status = 'gameover';
+    this.resultTimer = RESULT_DELAY;
+    save.recordBest(this.score);
+    this._sparks();
+    this.sfx('fail');
+  }
+
   _clearStage() {
     const wasBoss = this.isBoss;
     this.stage++;
     save.addStagesCleared(1);
+    save.reportMetric('stage', this.stage + 1);
+    if (wasBoss) save.reportMetric('boss', 1);
     this._awardCoins(wasBoss ? BOSS_CLEAR_COINS : STAGE_CLEAR_COINS,
       this.logCenter.x, this.logCenter.y, wasBoss ? 'BOSS!' : null);
     this._burstLog();
@@ -317,6 +379,8 @@ export class KnifeGame {
     // combo grows per successful throw and scales the points awarded
     this.combo++;
     if (this.combo > this.bestCombo) this.bestCombo = this.combo;
+    save.reportMetric('knives', 1);
+    save.reportMetric('combo', this.combo);
     this.comboPulse = 1;
     const gained = Math.round(1 * this.multiplier);
     this.score += gained;
@@ -345,6 +409,7 @@ export class KnifeGame {
       fruit.pop = 0.4;
       this.fruitCollected++;
       save.addFruit(1);
+      save.reportMetric('fruit', 1);
       this._awardCoins(FRUIT_COIN, pos.x, pos.y - 22, null);
       this._fruitBurst(localAngle);
       this.sfx('bang');
@@ -614,6 +679,7 @@ export class KnifeGame {
     if (this.status === 'playing' || this.status === 'gameover') this._drawHud(ctx);
     if (this.status === 'title') this._drawTitle(ctx);
     if (this.status === 'shop') this._drawShop(ctx);
+    if (this.status === 'quests') this._drawQuests(ctx);
     if (this.overlayAlpha > 0.01) this._drawGameOver(ctx);
     ctx.restore();
   }
@@ -929,7 +995,7 @@ export class KnifeGame {
     }
 
     // remaining knife pips at the bottom
-    const total = stageConfig(this.stage).requireKnife + 1;
+    const total = this.stageKnives || stageConfig(this.stage).requireKnife + 1;
     const left = Math.max(0, this.knivesLeft + (this.hasKnifeReady ? 1 : 0));
     ctx.save();
     ctx.translate(DESIGN_W / 2, DESIGN_H - 58);
@@ -960,56 +1026,83 @@ export class KnifeGame {
 
     // instruction card
     ctx.fillStyle = '#e8d7b4';
-    this._roundRect(ctx, 40, 530, DESIGN_W - 80, 190, 18);
+    this._roundRect(ctx, 40, 496, DESIGN_W - 80, 128, 18);
     ctx.fill();
     ctx.strokeStyle = '#b99c6e';
     ctx.lineWidth = 3;
-    this._roundRect(ctx, 40, 530, DESIGN_W - 80, 190, 18);
+    this._roundRect(ctx, 40, 496, DESIGN_W - 80, 128, 18);
     ctx.stroke();
 
     ctx.fillStyle = '#6b3f27';
-    ctx.font = '700 26px "Jua", system-ui, sans-serif';
-    ctx.fillText('게임방법', DESIGN_W / 2, 568);
-    ctx.font = '700 18px "Jua", system-ui, sans-serif';
-    ctx.fillText('터치하면 칼이 날아가요.', DESIGN_W / 2, 690);
+    ctx.font = '700 24px "Jua", system-ui, sans-serif';
+    ctx.fillText('게임방법', DESIGN_W / 2, 528);
+    ctx.font = '700 17px "Jua", system-ui, sans-serif';
+    ctx.fillText('터치하면 칼이 날아가요.', DESIGN_W / 2, 600);
 
     ctx.save();
-    ctx.translate(DESIGN_W / 2, 600);
-    ctx.scale(0.62, 0.62);
-    ctx.translate(0, -54);
+    ctx.translate(DESIGN_W / 2, 548);
+    ctx.scale(0.4, 0.4);
     this._drawKnifeSprite(ctx, 1);
     ctx.restore();
 
     // start button
     ctx.fillStyle = '#f5c132';
-    this._roundRect(ctx, 40, 742, 226, 60, 12);
+    this._roundRect(ctx, 40, 742, 340, 60, 12);
     ctx.fill();
     ctx.strokeStyle = '#c9942a';
     ctx.lineWidth = 4;
-    this._roundRect(ctx, 40, 742, 226, 60, 12);
+    this._roundRect(ctx, 40, 742, 340, 60, 12);
     ctx.stroke();
     ctx.fillStyle = '#4a2d13';
     ctx.font = '700 26px "Jua", system-ui, sans-serif';
-    ctx.fillText('시작하기', 153, 773);
+    ctx.fillText('시작하기', DESIGN_W / 2, 773);
 
-    // shop button
+    // quest + shop buttons
+    const claimable = this.getQuests().filter((q) => q.complete && !q.claimed).length
+      + (this.getDaily().claimedToday ? 0 : 1);
+
+    ctx.fillStyle = '#8fb98a';
+    this._roundRect(ctx, 40, 672, 164, 58, 12);
+    ctx.fill();
+    ctx.strokeStyle = '#5c8257';
+    ctx.lineWidth = 4;
+    this._roundRect(ctx, 40, 672, 164, 58, 12);
+    ctx.stroke();
+    ctx.fillStyle = '#1d3319';
+    ctx.font = '700 21px "Jua", system-ui, sans-serif';
+    ctx.fillText('일일 도전', 122, 702);
+
     ctx.fillStyle = '#7fb2d8';
-    this._roundRect(ctx, 278, 742, 102, 60, 12);
+    this._roundRect(ctx, 216, 672, 164, 58, 12);
     ctx.fill();
     ctx.strokeStyle = '#4d7fa5';
     ctx.lineWidth = 4;
-    this._roundRect(ctx, 278, 742, 102, 60, 12);
+    this._roundRect(ctx, 216, 672, 164, 58, 12);
     ctx.stroke();
     ctx.fillStyle = '#17303f';
-    ctx.font = '700 22px "Jua", system-ui, sans-serif';
-    ctx.fillText('상점', 329, 773);
+    ctx.font = '700 21px "Jua", system-ui, sans-serif';
+    ctx.fillText('상점', 298, 702);
+
+    // unclaimed-reward badge draws attention back to the daily loop
+    if (claimable > 0) {
+      ctx.beginPath();
+      ctx.arc(196, 676, 13, 0, Math.PI * 2);
+      ctx.fillStyle = '#e8455f';
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#fff1e0';
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 15px "Jua", system-ui, sans-serif';
+      ctx.fillText(String(claimable), 196, 677);
+    }
 
     // coin balance
-    this._drawCoin(ctx, DESIGN_W / 2 - 34, 714, 12);
+    this._drawCoin(ctx, DESIGN_W / 2 - 34, 642, 12);
     ctx.fillStyle = '#ffe9a8';
     ctx.font = '700 20px "Jua", system-ui, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(String(this.coins), DESIGN_W / 2 - 16, 715);
+    ctx.fillText(String(this.coins), DESIGN_W / 2 - 16, 643);
     ctx.restore();
   }
 
@@ -1066,6 +1159,157 @@ export class KnifeGame {
       unlocked: save.isUnlocked(s.id),
       equipped: save.equipped === s.id,
     }));
+  }
+
+  _drawQuests(ctx) {
+    const R = this.questRects();
+    const daily = this.getDaily();
+    ctx.save();
+    ctx.fillStyle = 'rgba(20,15,11,0.94)';
+    ctx.fillRect(0, 0, DESIGN_W, DESIGN_H);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fbeed6';
+    ctx.font = '700 32px "Jua", system-ui, sans-serif';
+    ctx.fillText('일일 도전', DESIGN_W / 2, 72);
+    this._drawCoin(ctx, DESIGN_W / 2 - 36, 112, 12);
+    ctx.fillStyle = '#ffe9a8';
+    ctx.font = '700 20px "Jua", system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(String(this.coins), DESIGN_W / 2 - 18, 113);
+
+    // ---- daily login streak ----
+    const d = R.daily;
+    ctx.fillStyle = daily.claimedToday ? '#2f3a30' : '#3f5c46';
+    this._roundRect(ctx, d.x, d.y, d.w, d.h, 12);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = daily.claimedToday ? 'rgba(255,240,214,0.16)' : '#9fe0ab';
+    this._roundRect(ctx, d.x, d.y, d.w, d.h, 12);
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#f3e4c8';
+    ctx.font = '700 17px "Jua", system-ui, sans-serif';
+    // before today's claim the streak still reads yesterday's value, so show
+    // the streak the player is about to reach rather than a bare 0
+    const shownStreak = daily.claimedToday ? daily.streak : daily.streak + 1;
+    ctx.fillText(`출석 보상  ${shownStreak}일 연속`, d.x + 16, d.y + 26);
+    ctx.font = '700 14px "Jua", system-ui, sans-serif';
+    ctx.fillStyle = '#c8bda8';
+    ctx.fillText(
+      daily.claimedToday ? '내일 다시 방문하세요' : `오늘의 보상 +${daily.nextReward}`,
+      d.x + 16, d.y + 52,
+    );
+
+    // 7-day streak pips
+    for (let i = 0; i < 7; i++) {
+      const px = d.x + d.w - 24 - (6 - i) * 20;
+      // pips light only for days actually banked, so an unclaimed day reads as empty
+      const on = i < Math.min(daily.streak, 7);
+      ctx.beginPath();
+      ctx.arc(px, d.y + 40, 6, 0, Math.PI * 2);
+      ctx.fillStyle = on ? '#ffd35c' : 'rgba(255,240,214,0.18)';
+      ctx.fill();
+    }
+
+    if (!daily.claimedToday) {
+      ctx.fillStyle = '#f5c132';
+      this._roundRect(ctx, d.x + d.w - 92, d.y + d.h - 30, 78, 22, 8);
+      ctx.fill();
+      ctx.fillStyle = '#4a2d13';
+      ctx.font = '700 14px "Jua", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('받기', d.x + d.w - 53, d.y + d.h - 18);
+    }
+
+    // ---- quest cards ----
+    for (const c of R.cards) {
+      const q = c.quest;
+      ctx.fillStyle = q.claimed ? '#2b2622' : q.complete ? '#3f5c46' : '#3d3630';
+      this._roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = q.complete && !q.claimed ? '#9fe0ab' : 'rgba(255,240,214,0.16)';
+      this._roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+      ctx.stroke();
+
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = q.claimed ? '#8d8271' : '#f3e4c8';
+      ctx.font = '700 16px "Jua", system-ui, sans-serif';
+      ctx.fillText(q.text, c.x + 16, c.y + 24);
+
+      // progress bar
+      const bw = c.w - 130, bx = c.x + 16, by = c.y + 46;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      this._roundRect(ctx, bx, by, bw, 12, 6);
+      ctx.fill();
+      const frac = clamp(q.progress / q.goal, 0, 1);
+      if (frac > 0) {
+        const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+        g.addColorStop(0, '#7fd48f');
+        g.addColorStop(1, '#ffd35c');
+        ctx.fillStyle = g;
+        this._roundRect(ctx, bx, by, Math.max(6, bw * frac), 12, 6);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#c8bda8';
+      ctx.font = '700 13px "Jua", system-ui, sans-serif';
+      ctx.fillText(`${q.progress}/${q.goal}`, bx, by + 26);
+
+      // reward / claim button
+      const btnX = c.x + c.w - 96, btnY = c.y + 26, btnW = 80, btnH = 34;
+      if (q.claimed) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#7f9f88';
+        ctx.font = '700 15px "Jua", system-ui, sans-serif';
+        ctx.fillText('완료', btnX + btnW / 2, btnY + btnH / 2);
+      } else if (q.complete) {
+        ctx.fillStyle = '#f5c132';
+        this._roundRect(ctx, btnX, btnY, btnW, btnH, 9);
+        ctx.fill();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#4a2d13';
+        ctx.font = '700 16px "Jua", system-ui, sans-serif';
+        ctx.fillText('받기', btnX + btnW / 2, btnY + btnH / 2 + 1);
+      } else {
+        this._drawCoin(ctx, btnX + 22, btnY + btnH / 2, 9);
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#ffe9a8';
+        ctx.font = '700 16px "Jua", system-ui, sans-serif';
+        ctx.fillText(String(q.reward), btnX + 36, btnY + btnH / 2 + 1);
+      }
+    }
+
+    // toast
+    if (this.shopMessageT > 0) {
+      ctx.globalAlpha = clamp(this.shopMessageT, 0, 1);
+      ctx.fillStyle = 'rgba(30,22,16,0.92)';
+      this._roundRect(ctx, 50, DESIGN_H - 150, DESIGN_W - 100, 40, 12);
+      ctx.fill();
+      ctx.fillStyle = '#ffe9a8';
+      ctx.font = '700 17px "Jua", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(this.shopMessage, DESIGN_W / 2, DESIGN_H - 129);
+      ctx.globalAlpha = 1;
+    }
+
+    // close
+    const cl = R.close;
+    ctx.fillStyle = '#f5c132';
+    this._roundRect(ctx, cl.x, cl.y, cl.w, cl.h, 12);
+    ctx.fill();
+    ctx.strokeStyle = '#c9942a';
+    ctx.lineWidth = 4;
+    this._roundRect(ctx, cl.x, cl.y, cl.w, cl.h, 12);
+    ctx.stroke();
+    ctx.fillStyle = '#4a2d13';
+    ctx.font = '700 22px "Jua", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('닫기', DESIGN_W / 2, cl.y + cl.h / 2 + 1);
+    ctx.restore();
   }
 
   _drawShop(ctx) {
@@ -1263,8 +1507,22 @@ export class KnifeGame {
     const p = this.toDesign(clientX, clientY);
 
     if (this.status === 'title') {
-      if (p.y > 742 && p.y < 802 && p.x > 278 && p.x < 380) { this.openShop(); return; }
+      if (p.y > 672 && p.y < 730) {
+        if (p.x >= 40 && p.x <= 204) { this.openQuests(); return; }
+        if (p.x >= 216 && p.x <= 380) { this.openShop(); return; }
+      }
       this.startGame();
+      return;
+    }
+
+    if (this.status === 'quests') {
+      const R = this.questRects();
+      const inside = (r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+      if (inside(R.close)) { this.closeQuests(); return; }
+      if (inside(R.daily)) { this.claimDaily(); return; }
+      for (const c of R.cards) {
+        if (inside(c) && c.quest.complete && !c.quest.claimed) { this.claimQuest(c.quest.id); return; }
+      }
       return;
     }
 
@@ -1303,7 +1561,7 @@ export class KnifeGame {
       score: this.score,
       best: this.best,
       knivesLeft: this.knivesLeft + (this.hasKnifeReady ? 1 : 0),
-      stageRequiredKnives: stageConfig(this.stage).requireKnife + 1,
+      stageRequiredKnives: this.stageKnives || stageConfig(this.stage).requireKnife + 1,
       stuckKnives: L ? L.knives.length : 0,
       pattern: L ? L.name : null,
       rotationSpeedProfile: L ? L.sequences.map((s) => `${s.speed}${s.isReverse ? 'r' : ''}`).join(',') : null,

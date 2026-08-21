@@ -1,5 +1,6 @@
 // Persistent meta-progression, stored in localStorage under one key.
 // Everything the player earns across runs lives here.
+import { rollQuests, dayKey, questById, isPeakMetric, dailyReward } from './quests.js';
 
 const KEY = 'kkk_save_v1';
 
@@ -11,7 +12,20 @@ const DEFAULTS = {
   unlocked: ['classic'],
   equipped: 'classic',
   muted: false,
+  // daily systems
+  questDay: 0,        // dayKey the current quest set was rolled for
+  questIds: [],
+  questProgress: {},  // id -> number
+  questClaimed: {},   // id -> true
+  lastClaimDay: 0,    // dayKey of the last daily-bonus claim
+  streak: 0,
 };
+
+// Test hook: shifts the notion of "today" so daily rollover can be exercised
+// without waiting for real time to pass.
+let dayOffset = 0;
+export const __setDayOffset = (n) => { dayOffset = n; refreshDaily(); };
+const today = () => dayKey(dayOffset);
 
 let state = load();
 
@@ -45,6 +59,19 @@ function persist() {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch { /* quota or private mode; game still runs in-memory */ }
+}
+
+// Roll a fresh quest set when the calendar day changes. Progress and claims
+// reset with it; the streak is evaluated separately on claim.
+function refreshDaily() {
+  const d = today();
+  if (state.questDay === d && state.questIds.length === 3) return false;
+  state.questDay = d;
+  state.questIds = rollQuests(d);
+  state.questProgress = {};
+  state.questClaimed = {};
+  persist();
+  return true;
 }
 
 export const save = {
@@ -94,8 +121,92 @@ export const save = {
   },
   setMuted(v) { state.muted = !!v; persist(); },
 
+  // ---------------- daily quests ----------------
+  quests() {
+    refreshDaily();
+    return state.questIds.map((id) => {
+      const def = questById(id);
+      const progress = Math.min(state.questProgress[id] || 0, def.goal);
+      return {
+        id,
+        text: def.text(def.goal),
+        metric: def.metric,
+        goal: def.goal,
+        reward: def.reward,
+        progress,
+        complete: progress >= def.goal,
+        claimed: !!state.questClaimed[id],
+      };
+    });
+  },
+
+  // Report a gameplay event toward every active quest watching that metric.
+  // Totalling metrics accumulate; peak metrics keep the best single value.
+  reportMetric(metric, value) {
+    refreshDaily();
+    let changed = false;
+    for (const id of state.questIds) {
+      const def = questById(id);
+      if (!def || def.metric !== metric) continue;
+      const cur = state.questProgress[id] || 0;
+      const next = isPeakMetric(metric) ? Math.max(cur, value) : cur + value;
+      if (next !== cur) {
+        state.questProgress[id] = Math.min(next, def.goal);
+        changed = true;
+      }
+    }
+    if (changed) persist();
+    return changed;
+  },
+
+  setQuestProgress(id, value) {
+    refreshDaily();
+    if (!state.questIds.includes(id)) return false;
+    state.questProgress[id] = value;
+    persist();
+    return true;
+  },
+
+  claimQuest(id) {
+    refreshDaily();
+    if (!state.questIds.includes(id)) return false;
+    if (state.questClaimed[id]) return false;
+    const def = questById(id);
+    if ((state.questProgress[id] || 0) < def.goal) return false;
+    state.questClaimed[id] = true;
+    state.coins += def.reward;
+    persist();
+    return true;
+  },
+
+  // ---------------- daily login streak ----------------
+  dailyStatus() {
+    const d = today();
+    return {
+      claimedToday: state.lastClaimDay === d,
+      streak: state.streak,
+      nextReward: dailyReward(state.lastClaimDay === d ? state.streak : state.streak + 1),
+    };
+  },
+
+  claimDaily() {
+    const d = today();
+    if (state.lastClaimDay === d) {
+      return { ok: false, streak: state.streak, reward: 0, reason: 'already-claimed' };
+    }
+    // consecutive only when the previous claim was literally yesterday
+    const yesterday = dayKey(dayOffset - 1);
+    state.streak = state.lastClaimDay === yesterday ? state.streak + 1 : 1;
+    state.lastClaimDay = d;
+    const reward = dailyReward(state.streak);
+    state.coins += reward;
+    persist();
+    return { ok: true, streak: state.streak, reward };
+  },
+
   reset() {
-    state = { ...DEFAULTS, unlocked: [...DEFAULTS.unlocked] };
+    state = { ...DEFAULTS, unlocked: [...DEFAULTS.unlocked], questProgress: {}, questClaimed: {}, questIds: [] };
+    refreshDaily();
     persist();
   },
 };

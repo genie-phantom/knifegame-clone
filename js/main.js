@@ -1,5 +1,5 @@
 import { KnifeGame } from './game.js';
-import { save } from './save.js';
+import { save, __setDayOffset } from './save.js';
 
 const IMG = {
   bg: 'assets/img/bg.png',
@@ -187,9 +187,20 @@ window.__game = {
   openShop: () => game.openShop(),
   closeShop: () => game.closeShop(),
   resetSave() {
+    __setDayOffset(0);
     save.reset();
     game.coins = save.coins;
     game.best = save.best;
     game.fruitCollected = save.fruitCollected;
   },
+
+  // ---- retention test surface ----
+  getQuests: () => game.getQuests(),
+  getDaily: () => game.getDaily(),
+  claimQuest: (id) => game.claimQuest(id),
+  claimDaily: () => game.claimDaily(),
+  openQuests: () => game.openQuests(),
+  closeQuests: () => game.closeQuests(),
+  debugSetQuestProgress: (id, v) => save.setQuestProgress(id, v),
+  debugAdvanceDay: (n) => { __setDayOffset(n); return game.getQuests(); },
 };
